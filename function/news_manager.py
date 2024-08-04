@@ -22,7 +22,7 @@ class ytn_manager():
         try:
             latest_date_str, latest_set_num = chromadb.get_most_recent_date_and_setnum()
             if latest_date_str == 'None':
-                latest_date_str = '07-15 06:00'# '07-15 06:00'
+                latest_date_str = '07-29 06:00'# '07-15 06:00'
                 latest_set_num = 0
             print(f"마지막 날짜 : {latest_date_str}, 마지막 번호 : {latest_set_num}")
         except:
@@ -35,7 +35,7 @@ class ytn_manager():
         content_list = list(total_today_content.values())
         sorted_content_list = sorted(content_list, key=lambda item: item['time'])
         # 
-        for content in tqdm(sorted_content_list):
+        for index, content in tqdm(enumerate(sorted_content_list), total=len(sorted_content_list)):
             input_url = content['url']
             media, title, article, article_date = scrap.scraping(input_url=input_url)
 
@@ -48,6 +48,10 @@ class ytn_manager():
                     summary_title = ''
                     summary = ''
                     summary_reason = ''
+                    main = ''
+                    sub = ''
+                    major_class = ''
+                    medium_class = ''
                     
                 elif using_summary:
                     data = {
@@ -55,8 +59,18 @@ class ytn_manager():
                             'dateDiv': article_date,
                             'articleDiv': article
                         }
-                    response = requests.post(MODEL_API_ADDRESS, data=data)
-                    response = response.json()
+                    error_count=0
+                    try:
+                        response = requests.post(MODEL_API_ADDRESS, data=data)
+                        response = response.json()
+                    except:
+                        while error_count < 2:
+                            error_count += 1
+                            sleep(15)
+                            print("한 번 더 !!")
+                            response = requests.post(MODEL_API_ADDRESS, data=data)
+                            response = response.json()
+
 
                     summary_title = response['summary_title']
                     summary = response['summary']
@@ -68,36 +82,47 @@ class ytn_manager():
 
                     tenser_embedding = longformer.inference(summary)
 
-                embedding = torch.squeeze(tenser_embedding).tolist()  # 2차원 텐서를 리스트로 변경해서 chromadb에 저장.
+                # 2차원 텐서를 리스트로 변경해서 chromadb에 입력.
+                embedding = torch.squeeze(tenser_embedding).tolist()  
                 search_date = article_date.split(' ')[0].strip()
                 respons = chromadb.search(embedding=embedding,
                                           search_date=search_date)
                 set_list = []
                 for k, data in enumerate(respons):
-                    if data['distances'] < 20:
-                        print(f"{k}번 - 유사도 : {round(data['distances'], 3)}")
+                    if data['distance'] < 16.5:
+                        print(f"{k}번 - 유사도 : {round(data['distance'], 3)}")
                         print(f"URI : {data['metadata']['url'].strip()}")
                         print(f"기사 제목 : {data['metadata']['title']}")
                         print(f"요약문 : {data['metadata']['summary']}")
                         print(f"송고 시간 : {data['metadata']['article_date'].strip()}")
-                        print(f"세트 번호 : {data['metadata']['set_num']}") # 세트 번호는 int
-                        print(f"DB ID : {data['ids']}\n")
-                        set_list.append(data['metadata']['set_num'])
+                        print(f"세트 번호 : {data['metadata']['set_num']}") 
+                        print(f"DB ID : {data['id']}\n")
+                        similarity = f"{data['metadata']['index']}->{data['metadata']['set_num']}->{data['distance']}"
+                        set_list.append(similarity)
                         
-                # latest_set_num 사용 및 갱신
+                # latest_set_num 사용 및 갱신 -> 가장 유사도 높은 set_num으로 !
                 if len(set_list) != 0:
-                    set_num = max(set_list)
+                    set_num = -1
+                    tmp_similarity = 20.
+                    for i, set in enumerate(set_list):
+                        set = set.split('->')
+                        if float(set[2]) < tmp_similarity:
+                            tmp_similarity = float(set[2])
+                            set_num = int(set[1])
                     print(f"세트 번호 리스트에 다른 종류? {set_list}")
                 elif len(set_list) == 0:
                     set_num = latest_set_num + 1
                     latest_set_num = set_num
+
+                # set_list -> str로 바꿔서 저장. 
+                set_list = ', '.join(set_list)
                 
                 # DB에 저장
-                chromadb.add_or_update(embedding, media, input_url,
+                chromadb.add_or_update(index, embedding, media, input_url,
                                        title, article, article_date, 
                                        summary_title, summary, summary_reason, 
                                        main, sub, major_class, medium_class,
-                                       set_num)
+                                       set_num, set_list)
                 
             sleep(0.2)
 

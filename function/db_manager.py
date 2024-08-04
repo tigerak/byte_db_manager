@@ -35,18 +35,19 @@ class ChromaManager():
             except Exception as e:
                 pass
         
-    def add_or_update(self, embedding, media, url, 
+    def add_or_update(self, index, embedding, media, url, 
                       title, article, article_date, 
                       summary_title, summary, summary_reason, 
                       main, sub, major_class, medium_class,
-                      set_num):
+                      set_num, set_list):
             id = self._make_id(article=article)
             # 데이터 추가 (upsert는 업데이트. 추가만 하려면 add)
             self.article_collection.upsert(
                                 ids=[id],
                                 embeddings=[embedding],
                                 documents=[article],
-                                metadatas=[{'title' : title,
+                                metadatas=[{'index': index,
+                                            'title': title,
                                             'url': url,
                                             'media' : media,
                                             'article_date' : article_date,
@@ -57,7 +58,8 @@ class ChromaManager():
                                             'medium_class': medium_class,
                                             'main': main,
                                             'sub': sub,
-                                            'set_num': set_num}]
+                                            'set_num': set_num,
+                                            'set_list': set_list}]
                                 )
             print(f"저장 완료 : {title}")
             
@@ -71,7 +73,7 @@ class ChromaManager():
     def search(self, embedding, search_date):
         response = self.article_collection.query(
             query_embeddings=embedding,
-            n_results=20,
+            n_results=50,
         )
         # where에서 앞에 날짜 부분만 매칭할 수 있게 해야함.
         filtered_results = []
@@ -79,14 +81,27 @@ class ChromaManager():
             db_date = metadata['article_date']
             if db_date.startswith(search_date):
                 filtered_results.append({
-                    'ids': response['ids'][0][i],
-                    'distances': response['distances'][0][i],
+                    'id': response['ids'][0][i],
+                    'distance': response['distances'][0][i],
                     'document': response['documents'][0][i],
                     'metadata': metadata
                 })
         # 필요에 따라 상위 n_results 개수만큼 반환
-        n_results = 20
+        n_results = 50
         return filtered_results[:n_results]
+    
+    def get_data(self, db_id):
+        response = self.article_collection.get(ids=[db_id])
+        if response['ids']:
+            data = {
+                'id': response['ids'][0],
+                'document': response['documents'][0],
+                'metadata': response['metadatas'][0]
+            }
+            return data
+        else:
+            print("해당 ID에 대한 데이터를 찾을 수 없습니다.")
+            return None
     
     def export_all(self):
         # Initialize an empty list to store all documents
@@ -155,7 +170,7 @@ class ChromaManager():
                 if most_recent_date is None or article_date_dt > most_recent_date:
                     most_recent_date = article_date_dt
 
-                article_set_num = response['metadatas'][i]['set_num']
+                article_set_num = int(response['metadatas'][i]['set_num'])
                 
                 if article_set_num > most_recent_set_num:
                     most_recent_set_num = article_set_num

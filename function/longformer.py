@@ -43,8 +43,7 @@ class RobertaLongForMaskedLM(AutoModel):
             layer.attention.self.query_global = copy.deepcopy(layer.attention.self.query)
             layer.attention.self.key_global = copy.deepcopy(layer.attention.self.key)
             layer.attention.self.value_global = copy.deepcopy(layer.attention.self.value)
-       
-            
+    
             
 class Longformer():
     def __init__(self):
@@ -76,6 +75,9 @@ class Longformer():
         # print(outputs[1].size()) # 문서 차원
         
         return outputs[1] 
+    
+    def test_func(self):
+        return self.model, self.tokenizer
         
 # if __name__ == '__main__':
 #     article = ["""
