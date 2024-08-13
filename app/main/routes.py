@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime
 
 from flask import request, jsonify
 # modules
@@ -60,6 +61,7 @@ def get_data():
         sorted_set_list = sorted(send_set_list, key=lambda x: int(x[0]))
 
         document['similarity_list'] = sorted_set_list
+        
         return jsonify(document)
     
     # db_manager 페이지에서 DB 가져오기 버튼 누른 경우 
@@ -92,8 +94,11 @@ def get_data():
     # API 테스트 버튼
     elif data['buttonId'] == 'getSearchDataButton':
         search_date = data['searchDate']
-        main_tag = data['searchTag']
+        main_tag = data['searchTag'] if data['searchTag'] != '' else '없음'
+        medium_class = data['searchCategory'] if data['searchCategory'] != '' else '없음'
+
         search_documents = chromadb.get_by_main_and_date(main_tag=main_tag,
+                                                         medium_class=medium_class,
                                                          search_date=search_date)
         for doc in search_documents:
             if 'metadata' in doc:
@@ -105,19 +110,73 @@ def get_data():
         
         return jsonify(sorted_values)
 
-@bp.route('/api/mvp', methods=['POST'])
-def mvp_test():
-    logging.basicConfig(filename='/home/data_ai/Project/app/gunicorn.log', level=logging.INFO)
+
+
+############################## API ##############################
+@bp.route('/api/mvp/economy', methods=['POST'])
+def mvp_economy():
+    # logging.basicConfig(filename='/home/data_ai/Project/app/gunicorn.log', level=logging.INFO)
     
     data = request.get_json()
 
     topTag = data['topTag']
     middleTag = data['middleTag']
     searchDate = data['searchDate']
-
     
-    response = summary_chromadb.search_by_tags_and_date(topTag=topTag,
-                                                    middleTag=middleTag,
-                                                    searchDate=searchDate)
+    response = ytn_chromadb.get_by_medium_date(topTag=topTag,
+                                               middleTag=middleTag,
+                                               searchDate=searchDate)
     
     return jsonify(response)
+
+
+@bp.route('/api/mvp/kos', methods=['POST'])
+def mvp_kos():
+    data = request.get_json()
+
+    topTag = data['topTag']
+    main_tag = data['middleTag']
+    search_date = data['searchDate']
+
+    response = ytn_chromadb.get_by_main_date(main_tag=main_tag,
+                                             search_date=search_date)
+    # final_results에서 keyword를 기준으로 데이터를 묶음
+    grouped_results = {}
+
+    for item in response:
+        id = item.get('id')
+        keyword = item.get('keyword')
+        summary_title = item.get('summary_title')
+        article_date = item.get('article_date')
+        
+        if keyword in grouped_results:
+            grouped_results[keyword].append({
+                'id': id,
+                'summary_title': summary_title,
+                'article_date': article_date
+            })
+        else:
+            grouped_results[keyword] = [{
+                'id': id,
+                'summary_title': summary_title,
+                'article_date': article_date
+            }]
+
+    # 각 키워드 내에서 summary_title을 최신 시간 기준으로 정렬
+    for keyword in grouped_results:
+        grouped_results[keyword] = sorted(grouped_results[keyword], key=lambda x: datetime.strptime(x['article_date'], '%Y-%m-%d %H:%M'), reverse=True)
+
+    # 키워드를, 그 키워드의 최신 summary_title의 시간 기준으로 정렬
+    grouped_list_sorted = sorted(grouped_results.items(), key=lambda x: datetime.strptime(x[1][0]['article_date'], '%Y-%m-%d %H:%M'), reverse=True)
+
+    return jsonify(grouped_list_sorted)
+
+@bp.route('/api/mvp/kos/keyword', methods=['POST'])
+def mvp_kos_keyword():
+    search_ids = request.get_json()
+
+    response = ytn_chromadb.get_by_ids(search_ids)
+
+    return jsonify(response)
+
+######################################################################

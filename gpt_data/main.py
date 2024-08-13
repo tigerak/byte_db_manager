@@ -11,6 +11,7 @@ class MakePrompt():
     def __init__(self):
         self.export_from_db_path = r'/home/data_ai/Project/gpt_data/data/export_from_db.json'
         self.prepared_prompt_path = r'/home/data_ai/Project/gpt_data/data/prepared_prompt.json'
+        self.keyword_data_path = r'/home/data_ai/Project/gpt_data/data/keyword_data.json'
         
     # 군집별로 Prompt 제작하여 저장
     def set_prompt(self):
@@ -32,21 +33,28 @@ class MakePrompt():
         with open(self.prepared_prompt_path, 'w', encoding='utf-8') as f:
             json.dump(query_list, f, ensure_ascii=False, indent=4)
         print(f"Prompt list가 {self.prepared_prompt_path}에 저장되었습니다.")
+
         
+    def make_data_from_gpt(self):
+        gpt = GPT()
+        keyword_data_list = gpt.make_keyword_data(prompt_path=self.prepared_prompt_path,
+                                                  save_path=self.keyword_data_path)
+        
+
 
     def _base_prompt(self, part_prompt):
         prompt = f"""{part_prompt}
-위 기사들의 공통점을 찾아 3단어 내외의 키워드를 만드세요.
-그리고 그 키워드를 한 문장을 설명하세요.
+위 요약문들의 공통적인 내용을 가장 잘 설명할 수 있는 하나의 짧은 제목을 만드세요. 제목은 5단어 이하여야 합니다.
+그리고 그 짧은 제목을 한 문장으로 설명하세요.
 
-### 키워드 :
+### 짧은 제목 :
 ### 한 문장 설명 :
 """
         return prompt
         
     # ChromaDB로부터 모든 데이터 불러와 군집화 후 저장 
     def _export_group(self):
-        ch = ChromaManager('article_data')
+        ch = ChromaManager('summary_data')
         all_documents = ch.export_all()
         # 모든 데이터 계층 평활화
         for doc in all_documents:
@@ -59,7 +67,7 @@ class MakePrompt():
         for data in sorted_values:
             if data['set_num'] not in group_data.keys():
                 group_data[data['set_num']] = []
-            group_data[data['set_num']].append(data['document'])
+            group_data[data['set_num']].append(data['summary'])
         # 저장
         with open(self.export_from_db_path, 'w', encoding='utf-8') as f:
             json.dump(group_data, f, ensure_ascii=False, indent=4)
@@ -67,10 +75,11 @@ class MakePrompt():
 
 
 if __name__ == '__main__':
-    # mp = MakePrompt()
-    # mp.set_prompt() # 일단 저장함
+    mp = MakePrompt()
+    mp.set_prompt() # 일단 저장함
+    mp.make_data_from_gpt()
 
-    gpt = GPT()
-    json_path = r'/home/data_ai/Project/gpt_data/data/prepared_prompt.json'
-    set_num = 781
-    gpt.query_gpt(json_path, set_num)
+    # gpt = GPT()
+    # json_path = r'/home/data_ai/Project/gpt_data/data/prepared_prompt.json'
+    # set_num = 781
+    # gpt.query_gpt(json_path, set_num)
