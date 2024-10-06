@@ -1,11 +1,13 @@
 import json
 import logging
 from datetime import datetime
-
+# Flask
 from flask import request, jsonify
-# modules
+# Modules
+from config import *
 from app.main import bp
 from function.db_manager import ChromaManager
+
 
 
 article_chromadb = ChromaManager(collection_name='article_data')
@@ -24,6 +26,7 @@ def index():
         )
     # return "You're connected to the Main Server API !!"
 
+############################## WEB ##############################
 @bp.route('/api', methods=['POST'])
 def get_data():
     data = request.form
@@ -71,9 +74,11 @@ def get_data():
             if 'metadata' in doc:
                 doc.update(doc.pop('metadata'))
         # article_date, set_num, index 순으로 올림차순 정렬
-        sorted_values = sorted(all_documents, key=lambda x: (x['article_date'].split(' ')[0],
-                                                             x['set_num'], 
-                                                             x['index']))
+        sorted_values = sorted(all_documents, 
+                               key=lambda x: (x['article_date'].split(' ')[0],
+                                              x['set_num'], 
+                                              x['index']),
+                               reverse=True)
         
         return jsonify(sorted_values)
     
@@ -81,8 +86,11 @@ def get_data():
     elif data['buttonId'] == 'saveButton':
         chromadb.update_specific_metadata_fields(
                         id=data['dbIdDiv'],
+                        search_date=data['dateDiv'].split(' ')[0],
                         summary_title=data['modelTitle'],
                         summary=data['modelSummary'],
+                        keyword=data['keywordDiv'],
+                        set_num=data['setNumDiv'],
                         major_class=data['majorTagDiv'],
                         medium_class=data['mediumTagDiv'],
                         main=data['mainTagDiv'],
@@ -109,7 +117,7 @@ def get_data():
                                                                 x['index']))
         
         return jsonify(sorted_values)
-
+######################################################################
 
 
 ############################## API ##############################
@@ -118,14 +126,16 @@ def mvp_economy():
     # logging.basicConfig(filename='/home/data_ai/Project/app/gunicorn.log', level=logging.INFO)
     
     data = request.get_json()
-
+    
     topTag = data['topTag']
     middleTag = data['middleTag']
     searchDate = data['searchDate']
     
-    response = ytn_chromadb.get_by_medium_date(topTag=topTag,
-                                               middleTag=middleTag,
-                                               searchDate=searchDate)
+    response = ytn_chromadb.get_by_medium_date(top_tag=topTag,
+                                               middle_tag=middleTag,
+                                               search_date=searchDate)
+    
+    
     
     return jsonify(response)
 
@@ -141,7 +151,7 @@ def mvp_kos():
     response = ytn_chromadb.get_by_main_date(main_tag=main_tag,
                                              search_date=search_date)
     # final_results에서 keyword를 기준으로 데이터를 묶음
-    grouped_results = {}
+    grouped_results = []
 
     for item in response:
         id = item.get('id')
@@ -149,27 +159,33 @@ def mvp_kos():
         summary_title = item.get('summary_title')
         article_date = item.get('article_date')
         
-        if keyword in grouped_results:
-            grouped_results[keyword].append({
+        # 기존에 같은 keyword가 있는지 찾기
+        existing_keyword = next((group for group in grouped_results if group['keyword'] == keyword), None)
+        
+        if existing_keyword:
+            existing_keyword['items'].append({
                 'id': id,
                 'summary_title': summary_title,
                 'article_date': article_date
             })
         else:
-            grouped_results[keyword] = [{
-                'id': id,
-                'summary_title': summary_title,
-                'article_date': article_date
-            }]
+            grouped_results.append({
+                'keyword': keyword,
+                'items': [{
+                    'id': id,
+                    'summary_title': summary_title,
+                    'article_date': article_date
+                }]
+            })
 
     # 각 키워드 내에서 summary_title을 최신 시간 기준으로 정렬
-    for keyword in grouped_results:
-        grouped_results[keyword] = sorted(grouped_results[keyword], key=lambda x: datetime.strptime(x['article_date'], '%Y-%m-%d %H:%M'), reverse=True)
+    for group in grouped_results:
+        group['items'] = sorted(group['items'], key=lambda x: datetime.strptime(x['article_date'], '%Y-%m-%d %H:%M'), reverse=True)
 
     # 키워드를, 그 키워드의 최신 summary_title의 시간 기준으로 정렬
-    grouped_list_sorted = sorted(grouped_results.items(), key=lambda x: datetime.strptime(x[1][0]['article_date'], '%Y-%m-%d %H:%M'), reverse=True)
-
+    grouped_list_sorted = sorted(grouped_results, key=lambda x: datetime.strptime(x['items'][0]['article_date'], '%Y-%m-%d %H:%M'), reverse=True)
     return jsonify(grouped_list_sorted)
+
 
 @bp.route('/api/mvp/kos/keyword', methods=['POST'])
 def mvp_kos_keyword():

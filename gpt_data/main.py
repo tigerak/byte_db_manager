@@ -7,7 +7,9 @@ print(sys.path)
 from function.db_manager import ChromaManager
 from gpt_data.utils.gpt_api import GPT
 
+
 class MakePrompt():
+    ############################## function/main.py 관련 ##############################
     def __init__(self):
         self.export_from_db_path = r'/home/data_ai/Project/gpt_data/data/export_from_db.json'
         self.prepared_prompt_path = r'/home/data_ai/Project/gpt_data/data/prepared_prompt.json'
@@ -15,9 +17,12 @@ class MakePrompt():
         
     # 군집별로 Prompt 제작하여 저장
     def set_prompt(self):
+        # ChromaDB로부터 모든 데이터 불러와 군집화 후 저장 후 불러오기
         self._export_group()
+
         with open(self.export_from_db_path, 'r', encoding='utf-8') as file:
             json_data = json.load(file)
+
         # 군집별 Prompt 제작
         query_list = []
         for set_num, article_list in json_data.items():
@@ -34,24 +39,6 @@ class MakePrompt():
             json.dump(query_list, f, ensure_ascii=False, indent=4)
         print(f"Prompt list가 {self.prepared_prompt_path}에 저장되었습니다.")
 
-        
-    def make_data_from_gpt(self):
-        gpt = GPT()
-        keyword_data_list = gpt.make_keyword_data(prompt_path=self.prepared_prompt_path,
-                                                  save_path=self.keyword_data_path)
-        
-
-
-    def _base_prompt(self, part_prompt):
-        prompt = f"""{part_prompt}
-위 요약문들의 공통적인 내용을 가장 잘 설명할 수 있는 하나의 짧은 제목을 만드세요. 제목은 5단어 이하여야 합니다.
-그리고 그 짧은 제목을 한 문장으로 설명하세요.
-
-### 짧은 제목 :
-### 한 문장 설명 :
-"""
-        return prompt
-        
     # ChromaDB로부터 모든 데이터 불러와 군집화 후 저장 
     def _export_group(self):
         ch = ChromaManager('summary_data')
@@ -74,12 +61,41 @@ class MakePrompt():
         print(f"DB 추출 데이터가 {self.export_from_db_path}에 저장되었습니다.")
 
 
+    # function/main.py에서 직접 데이터 저장 후 KeyWord 추가하는 코드.
+    def make_data_from_gpt(self):
+        gpt = GPT()
+        keyword_data_list = gpt.make_keyword_data(prompt_path=self.prepared_prompt_path,
+                                                  save_path=self.keyword_data_path)
+        
+    ######################################################################
+    
+        
+    ############################## Prompt ##############################
+    # 키워드 및 한 줄 설명 생성 Prompt.
+    def _base_prompt(self, part_prompt):
+        prompt = f"""{part_prompt}
+위 요약문들의 공통적인 내용을 가장 잘 설명할 수 있는 하나의 짧은 제목을 만드세요. 제목은 5단어 이하여야 합니다.
+그리고 그 짧은 제목을 한 문장으로 설명하세요.
+
+### 짧은 제목 :
+### 한 문장 설명 :
+"""
+        return prompt
+    
+    # 같은 요약문 제목 존재 시 새 요약문 제목 만드는 Prompt.
+    def _new_summary_title_prompt(self, summary):
+        prompt = f"""{summary}
+위 요약문의 내용을 가장 잘 설명할 수 있는 30자 이하의 요약문 제목을 만드세요. 
+요약문 제목은 '주체 + 쉼표(,) + 명사구'의 형태를 원칙으로 합니다.
+
+### 요약문 제목 :
+"""
+        return prompt
+        
+    ######################################################################
+
+
 if __name__ == '__main__':
     mp = MakePrompt()
     mp.set_prompt() # 일단 저장함
     mp.make_data_from_gpt()
-
-    # gpt = GPT()
-    # json_path = r'/home/data_ai/Project/gpt_data/data/prepared_prompt.json'
-    # set_num = 781
-    # gpt.query_gpt(json_path, set_num)
